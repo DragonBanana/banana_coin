@@ -1,40 +1,60 @@
 use serde::{Deserialize, Serialize};
 
-static ERROR_MESSAGE_ADD_COINS_OVERFLOW: &'static str = "Can not add coins to the wallet.";
-static ERROR_MESSAGE_ADD_COINS_NEGATIVE_AMOUNT: &'static str = "Can not add a negative amount of coins to the wallet. Use remove_coins function";
-static ERROR_MESSAGE_ADD_COINS_ZERO_AMOUNT: &'static str = "Can not add a zero to the wallet.";
-static ERROR_MESSAGE_ADD_COINS: &'static str = "Add coins generic error.";
-
+use crate::error::WalletError;
 
 /// Wallet structure
 /// It represents a wallet. It contains coins.
 #[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct Wallet {
     /// Amount of coins contained in the wallet.
     /// It is a signed integer 'i64', so it can be positive and negative.
-    pub n_coins: i64
+    balance: i64
 }
 
+/// Wallet implementation.
 impl Wallet {
     ///
     /// Return a new Wallet.
     ///
     /// # Arguments
     ///
-    /// * `n_coins` - A i64 integer that represents the amount of coins in the wallet.
+    /// * `balance` - A i64 integer that represents the amount of coins in the wallet.
     ///
-    /// # Examples
-    ///
+    /// # Example
+    /// ```
+    /// use banana_coin::model::Wallet;
     /// let wallet = Wallet::new(
-    ///     n_coins: 100,
+    ///     100
     /// );
+    /// # assert_eq!(wallet.get_balance(), 100)
+    /// ```
     ///
     pub fn new(
-        n_coins: i64
+        balance: i64
     ) -> Wallet {
         Wallet {
-            n_coins: n_coins
+            balance: balance
         }
+    }
+
+    ///
+    /// Return a copy of the amount of coins in the wallet.
+    ///
+    /// # Example
+    /// ```
+    /// use banana_coin::model::Wallet;
+    /// let wallet = Wallet::new(
+    ///     100
+    /// );
+    /// let wallet_balance : i64 = wallet.get_balance();
+    /// # assert_eq!(wallet_balance, 100)
+    /// ```
+    ///
+    pub fn get_balance(
+        self: & Wallet,
+    ) -> i64 {
+        self.balance.clone()
     }
 
     ///
@@ -42,31 +62,103 @@ impl Wallet {
     ///
     /// # Arguments
     ///
-    /// * `coins_to_add` - A i64 number that represents the amount of coin to add to the wallet.
+    /// * `coins_to_add` - A u32 number that represents the amount of coin to add to the wallet.
     ///
-    /// # Examples
+    /// # Example
     ///
-    /// wallet.add_coins(100);
+    /// ```
+    /// # use banana_coin::model::Wallet;
+    /// let mut wallet = Wallet::new(
+    ///     100
+    /// );
+    /// # assert_eq!(wallet.get_balance(), 100);
+    /// let result = wallet.add_coins(100);
+    /// match result {
+    ///     Ok(_) => println!("Coins added"),
+    ///     Err(e) => println!("{}", e)
+    /// }
+    /// # assert_eq!(wallet.get_balance(), 200);
+    /// ```
     ///
     pub fn add_coins(
         self: &mut Wallet,
-        coins_to_add: i64,
-    ) -> () {
+        coins_to_add: u32,
+    ) -> Result<(), WalletError> {
         // Checking for overflow
         match coins_to_add {
-            x if x < 0 => panic!(ERROR_MESSAGE_ADD_COINS_NEGATIVE_AMOUNT),
-            x if x == 0 => panic!(ERROR_MESSAGE_ADD_COINS_ZERO_AMOUNT),
+            x if x == 0 => Err(WalletError::AddZeroCoinError),
             x if x > 0 => {
-                match self.n_coins.checked_add(coins_to_add) {
-                    Some(total_coins) => {
-                        self.n_coins = total_coins;
+                match self.balance.checked_add(coins_to_add as i64) {
+                    Some(new_balance) => {
+                        self.balance = new_balance;
+                        Ok(())
                     }
                     None => {
-                        panic!(ERROR_MESSAGE_ADD_COINS_OVERFLOW)
+                        Err(WalletError::AddCoinOverflowError {
+                            current_amount: self.balance,
+                            added_amount: coins_to_add,
+                        })
                     }
                 }
             }
-            _ => panic!(ERROR_MESSAGE_ADD_COINS)
+            _ => Err(WalletError::AddCoinError)
+        }
+    }
+
+    ///
+    /// Remove coins to the wallet.
+    ///
+    /// # Arguments
+    ///
+    /// * `coins_to_remove` - A u32 number that represents the amount of coin to remove from the wallet.
+    /// * `allow_negative_balance` - A boolean that represents if, after the remove operation, a negative balance is allowed.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use banana_coin::model::Wallet;
+    /// let mut wallet = Wallet::new(
+    ///     100
+    /// );
+    /// # assert_eq!(wallet.get_balance(), 100);
+    /// let result = wallet.remove_coins(100, true);
+    /// match result {
+    ///     Ok(_) => println!("Coins removed"),
+    ///     Err(e) => println!("{}", e)
+    /// }
+    /// # assert_eq!(wallet.get_balance(), 0);
+    /// ```
+    ///
+    pub fn remove_coins(
+        self: &mut Wallet,
+        coins_to_remove: u32,
+        allow_negative_balance: bool,
+    ) -> Result<(), WalletError> {
+        // Checking for overflow
+        match coins_to_remove {
+            x if x == 0 => Err(WalletError::RemoveZeroCoinError),
+            x if x > 0 => {
+                match self.balance.checked_sub(coins_to_remove as i64) {
+                    Some(total_coins) => {
+                        if !allow_negative_balance && total_coins < 0 {
+                            return Err(WalletError::RemoveCoinNegativeBalanceError {
+                                current_amount: self.balance,
+                                removed_amount: coins_to_remove,
+                                negative_balance_allowed: allow_negative_balance,
+                            })
+                        }
+                        self.balance = total_coins;
+                        Ok(())
+                    }
+                    None => {
+                        Err(WalletError::RemoveCoinOverflowError {
+                            current_amount: self.balance,
+                            removed_amount: coins_to_remove,
+                        })
+                    }
+                }
+            }
+            _ => Err(WalletError::RemoveCoinError)
         }
     }
 }
